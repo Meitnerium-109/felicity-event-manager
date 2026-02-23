@@ -1,0 +1,88 @@
+GET http://localhost:5000/api/registrations/event/699bf6dacff447be61d30a0d
+
+# POST http://localhost:5000/api/auth/login
+# Content-Type: application/json
+
+# {
+# "email": "techclub-iiit@clubs.iiit.ac.in",
+# "password": "8kTU5BGN"
+# }
+
+#GET http://localhost:5000/api/registrations/my-registrations
+
+# POST http://localhost:5000/api/registrations/699bf6dacff447be61d30a0d
+# Content-Type: application/json
+
+# {
+# "answers": [
+# {
+# "fieldName": "What is your current programming experience?",
+# "response": "I am a beginner and I am very eager to learn!"
+# }
+# ]
+# }
+
+#GET http://localhost:5000/api/events
+
+# POST http://localhost:5000/api/auth/register
+# Content-Type: application/json
+
+# {
+# "firstName": "Pragati",
+# "lastName": "Prasad",
+# "email": "pragati.p@iiit.ac.in",
+# "password": "securepassword123",
+# "role": "Participant",
+# "participantType": "IIIT"
+# }
+
+# POST http://localhost:5000/api/events
+# Content-Type: application/json
+
+# {
+# "name": "Intro to Web Dev Workshop",
+# "description": "Learn the basics of the MERN stack.",
+# "type": "Normal",
+# "eligibility": "IIIT",
+# "registrationDeadline": "2026-03-15T23:59:00Z",
+# "startDate": "2026-03-20T10:00:00Z",
+# "endDate": "2026-03-20T14:00:00Z",
+# "registrationLimit": 50,
+# "registrationFee": 0,
+# "eventTags": ["web dev", "coding", "workshop"],
+# "customForm": [
+# {
+# "fieldName": "What is your current programming experience?",
+# "fieldType": "text",
+# "isRequired": true
+# }
+# ]
+# }
+
+# POST http://localhost:5000/api/auth/login
+# Content-Type: application/json
+
+# {
+# "email": "techclub-iiit@clubs.iiit.ac.in",
+# "password": "8kTU5BGN"
+# }
+
+# POST http://localhost:5000/api/auth/login
+# Content-Type: application/json
+
+# {
+# "email": "admin@felicity.iiit.ac.in",
+# "password": "admin@123"
+# }
+
+# POST http://localhost:5000/api/admin/organizers
+# Content-Type: application/json
+
+# {
+# "name": "Tech Club",
+# "category": "Technical",
+# "collegeName": "IIIT Hyderabad",
+# "contactNumber": "9876543210",
+# "description": "The official technology club of the college.",
+# "contactEmail": "contact@techclub.com"
+# }
