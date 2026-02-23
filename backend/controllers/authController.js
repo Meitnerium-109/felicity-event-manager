@@ -1,113 +1,88 @@
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import { User } from '../models/User.js';
-import { generateToken } from '../utils/generateToken.js';
 
-// regex to validate iiit email format (name@iiit.ac.in)
-const iiitEmailRegex = /^[a-z]+\.[a-z]+@iiit\.ac\.in$/i;
+const generateToken = (userId, role) => {
+  return jwt.sign({ userId, role }, process.env.JWT_SECRET || 'supersecretkey', {
+    expiresIn: '30d',
+  });
+};
 
-// register a participant
-export const registerParticipant = async (req, res) => {
+export const register = async (req, res) => {
   try {
-    const { email, password, firstName, lastName, participantType, areasOfInterest } = req.body;
+    const { name, email, password, role } = req.body;
 
-    // checking if the user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ message: 'email already in use' });
+      return res.status(400).json({ message: 'Email already in use' });
     }
 
-    // if participant is from IIIT, validate email format
-    if (participantType === 'IIIT') {
-      if (!iiitEmailRegex.test(email)) {
-        return res
-          .status(400)
-          .json({ message: 'invalid iiit email format (should be name@iiit.ac.in)' });
-      }
-    }
-
-    // hashing the password so we don't get in trouble
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // creating the user
     const user = new User({
+      name,
       email,
       password: hashedPassword,
-      role: 'Participant',
-      firstName,
-      lastName,
-      participantType,
-      areasOfInterest: areasOfInterest || [],
+      role: role || 'Participant',
     });
 
     await user.save();
 
-    // generating token and setting cookie
-    generateToken(res, user._id, user.role);
+    const token = generateToken(user._id, user.role);
 
     res.status(201).json({
-      message: 'participant registered successfully',
+      message: 'User registered successfully',
+      token, // Send token in the JSON body
       user: {
         _id: user._id,
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        name: user.name,
         role: user.role,
       },
     });
   } catch (error) {
-    console.log('register error:', error.message);
-    res.status(500).json({ message: 'server error during registration' });
+    console.log('Register error:', error.message);
+    res.status(500).json({ message: 'Server error during registration' });
   }
 };
 
-// login user
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // finding the user by email
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(401).json({ message: 'invalid email or password' });
+      return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    // comparing the entered password with the hashed password
     const isPasswordMatch = await bcrypt.compare(password, user.password);
     if (!isPasswordMatch) {
-      return res.status(401).json({ message: 'invalid email or password' });
+      return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    // generating token and setting cookie
-    generateToken(res, user._id, user.role);
+    const token = generateToken(user._id, user.role);
 
     res.status(200).json({
-      message: 'logged in successfully',
+      message: 'Logged in successfully',
+      token, // Send token in the JSON body
       user: {
         _id: user._id,
         email: user.email,
         role: user.role,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        name: user.name,
       },
     });
   } catch (error) {
-    console.log('login error:', error.message);
-    res.status(500).json({ message: 'server error during login' });
+    console.log('Login error:', error.message);
+    res.status(500).json({ message: 'Server error during login' });
   }
 };
 
-// logout user
 export const logout = async (req, res) => {
   try {
-    // clearing the jwt cookie by setting expiration to a past date
-    res.cookie('token', '', {
-      httpOnly: true,
-      expires: new Date(0),
-    });
-
-    res.status(200).json({ message: 'logged out successfully' });
+    res.status(200).json({ message: 'Logged out successfully' });
   } catch (error) {
-    console.log('logout error:', error.message);
-    res.status(500).json({ message: 'server error during logout' });
+    console.log('Logout error:', error.message);
+    res.status(500).json({ message: 'Server error during logout' });
   }
 };

@@ -4,7 +4,7 @@ import { Event } from '../models/Event.js';
 export const getAllEvents = async (req, res) => {
   try {
     // fetching all events from the database
-    const events = await Event.find().populate('organizerId', 'name email');
+    const events = await Event.find().populate('organiserId', 'name email');
 
     res.status(200).json({
       message: 'events fetched successfully',
@@ -22,7 +22,7 @@ export const getEventById = async (req, res) => {
     const { id } = req.params;
 
     // finding the specific event
-    const event = await Event.findById(id).populate('organizerId', 'name email');
+    const event = await Event.findById(id).populate('organiserId', 'name email');
 
     if (!event) {
       return res.status(404).json({ message: 'event not found' });
@@ -42,42 +42,28 @@ export const getEventById = async (req, res) => {
 export const createEvent = async (req, res) => {
   try {
     const {
-      name,
+      title,
       description,
-      type,
-      eligibility,
-      registrationDeadline,
-      startDate,
-      endDate,
-      registrationLimit,
-      registrationFee,
-      eventTags,
-      customForm,
-      itemDetails,
-      purchaseLimit,
+      date,
+      venue,
+      capacity,
+      category,
     } = req.body;
 
-    // validating required fields
-    if (!name || !description || !type || !eligibility || !startDate || !endDate) {
+    // validating required fields based on the simple frontend form
+    if (!title || !description || !date || !venue || !category) {
       return res.status(400).json({ message: 'missing required event fields' });
     }
 
-    // linking the event to the logged in organizer
+    // linking the event to the logged in organiser
     const event = new Event({
-      name,
+      title,
       description,
-      type,
-      eligibility,
-      registrationDeadline,
-      startDate,
-      endDate,
-      registrationLimit,
-      registrationFee: type === 'Normal' ? registrationFee : undefined,
-      eventTags: type === 'Normal' ? eventTags : undefined,
-      customForm: type === 'Normal' ? customForm : undefined,
-      itemDetails: type === 'Merchandise' ? itemDetails : undefined,
-      purchaseLimit: type === 'Merchandise' ? purchaseLimit : undefined,
-      organizerId: req.user._id,
+      date,
+      venue,
+      capacity: capacity || null,
+      category,
+      organiserId: req.user._id,
     });
 
     await event.save();

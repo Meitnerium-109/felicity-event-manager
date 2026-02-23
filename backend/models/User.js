@@ -1,7 +1,11 @@
 import mongoose from 'mongoose';
 
 const userSchema = new mongoose.Schema({
-  // common fields for all users
+  // Common fields for all users
+  name: {
+    type: String,
+    required: true,
+  },
   email: {
     type: String,
     required: true,
@@ -11,40 +15,33 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  role: {
+role: {
     type: String,
-    enum: ['Participant', 'Organizer', 'Admin'],
+    enum: [
+      'Participant', 'participant', 
+      'Organiser', 'organiser', 'Organizer', 'organizer', 
+      'Admin', 'admin'
+    ], 
     required: true,
   },
 
-  // participant-only fields
-  firstName: {
-    type: String,
-  },
-  lastName: {
-    type: String,
-  },
+  // Participant-only fields
   participantType: {
     type: String,
     enum: ['IIIT', 'Non-IIIT'],
-    // TODO: validate email format (a.b@iiit.ac.in) for IIIT participants
   },
   areasOfInterest: {
-    type: [String], // like 'Technical', 'Cultural'
+    type: [String], 
   },
   followedClubs: {
     type: [mongoose.Schema.Types.ObjectId],
     ref: 'User',
   },
 
-  // organizer-only fields
-  name: {
-    type: String,
-  },
+  // Organiser-only fields
   category: {
     type: String,
     enum: ['Technical', 'Cultural', 'Sports', 'Social', 'Academic'],
-    // NOTE: organizer emails should ideally follow name-iiit@clubs.iiit.ac.in format
   },
   collegeName: {
     type: String,
