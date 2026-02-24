@@ -93,7 +93,7 @@ export const getAllActiveOrganisers = async (req, res) => {
     try {
         const organisers = await User.find({
             role: { $in: ['Organizer', 'organiser', 'Organiser', 'organizer'] },
-            isActive: true
+            isActive: { $ne: false }
         }).select('_id organizerName name category description');
 
         res.status(200).json({

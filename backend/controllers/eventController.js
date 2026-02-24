@@ -41,7 +41,18 @@ export const getAllEvents = async (req, res) => {
     const { search, startDate, endDate, followedClubsOnly } = req.query;
     let query = {};
 
-    // 1. Regex text matching for Event Name
+    // 1. Auth & User Context (Moved to top so filters can use it)
+    const token = req.cookies?.jwt || req.headers.authorization?.split(' ')[1];
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey');
+        req.user = await User.findById(decoded.userId);
+      } catch (err) {
+        console.log('Token verification failed for public route', err.message);
+      }
+    }
+
+    // 2. Regex text matching for Event Name
     if (search) {
       query.$or = [
         { eventName: { $regex: search, $options: 'i' } },
@@ -49,14 +60,14 @@ export const getAllEvents = async (req, res) => {
       ];
     }
 
-    // 2. Date ranges
+    // 3. Date ranges
     if (startDate || endDate) {
       query.startDate = {};
       if (startDate) query.startDate.$gte = new Date(startDate);
       if (endDate) query.startDate.$lte = new Date(endDate);
     }
 
-    // 3. Followed Clubs Filtering
+    // 4. Followed Clubs Filtering
     if (followedClubsOnly === 'true' && req.user && req.user.followedClubs) {
       query.organiserId = { $in: req.user.followedClubs };
     }
@@ -64,25 +75,14 @@ export const getAllEvents = async (req, res) => {
     // fetching all events from the database matching the query
     let events = await Event.find(query).populate('organiserId', 'name email').sort({ createdAt: -1 });
 
-    // Recommendation logic: if token exists, extract user's interests
-    const token = req.cookies?.jwt || req.headers.authorization?.split(' ')[1];
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey');
-        const user = await User.findById(decoded.userId);
-
-        if (user && user.interests && user.interests.length > 0) {
-          const userInterests = user.interests;
-          events = events.sort((a, b) => {
-            const aMatches = userInterests.includes(a.category) ? 1 : 0;
-            const bMatches = userInterests.includes(b.category) ? 1 : 0;
-            return bMatches - aMatches; // Put matches first
-          });
-        }
-      } catch (err) {
-        // Just ignore invalid tokens for public routes
-        console.log('Token verification failed for recommendation logic');
-      }
+    // 5. Recommendation logic: if user exists, extract user's interests
+    if (req.user && req.user.interests && req.user.interests.length > 0) {
+      const userInterests = req.user.interests;
+      events = events.sort((a, b) => {
+        const aMatches = userInterests.includes(a.category) ? 1 : 0;
+        const bMatches = userInterests.includes(b.category) ? 1 : 0;
+        return bMatches - aMatches; // Put matches first
+      });
     }
 
     res.status(200).json({
@@ -137,6 +137,8 @@ export const createEvent = async (req, res) => {
       fee,
       venue,
       tags,
+      stockQuantity,
+      purchaseLimit,
       status,
       customFormFields
     } = req.body;
@@ -177,6 +179,8 @@ export const createEvent = async (req, res) => {
       fee: fee || 0,
       venue,
       tags: tags || [],
+      stockQuantity: stockQuantity || 0,
+      purchaseLimit: purchaseLimit || 1,
       status: status || 'Draft',
       customFormFields: customFormFields || [],
       organiserId: req.user._id,
@@ -314,6 +318,8 @@ export const updateEvent = async (req, res) => {
       // Only specific fields allowed to be updated
       if (updates.eventDescription) event.eventDescription = updates.eventDescription;
       if (updates.description) event.description = updates.description;
+      if (updates.stockQuantity !== undefined) event.stockQuantity = updates.stockQuantity;
+      if (updates.purchaseLimit !== undefined) event.purchaseLimit = updates.purchaseLimit;
       // The frontend will validate dates, we just apply them here securely
       if (updates.registrationDeadline) event.registrationDeadline = updates.registrationDeadline;
       if (updates.registrationLimit) event.registrationLimit = updates.registrationLimit;

@@ -2,3 +2,134 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    :root {
+        --techno-bg-dark: #050a07;
+        --techno-bg-darker: #020504;
+        --techno-green-primary: #10b981;
+        /* Emerald 500 */
+        --techno-green-bright: #34d399;
+        /* Emerald 400 */
+        --techno-green-dark: #047857;
+        /* Emerald 700 */
+        --techno-green-glow: rgba(16, 185, 129, 0.4);
+        --techno-border: rgba(16, 185, 129, 0.2);
+        --glass-bg: rgba(5, 15, 10, 0.6);
+        --text-main: #f3f4f6;
+        /* Gray 100 */
+        --text-muted: #9ca3af;
+        /* Gray 400 */
+    }
+
+    body {
+        @apply antialiased min-h-screen text-gray-100;
+        background: radial-gradient(circle at top right, #091c14 0%, var(--techno-bg-dark) 50%, var(--techno-bg-darker) 100%);
+        background-attachment: fixed;
+        color: var(--text-main);
+    }
+
+    /* Force Override generic light theme tailwind classes implicitly */
+    .bg-white,
+    .bg-gray-50,
+    .bg-gray-100 {
+        background-color: var(--glass-bg) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border: 1px solid var(--techno-border) !important;
+    }
+
+    .text-gray-900,
+    .text-gray-800,
+    .text-gray-700 {
+        color: var(--text-main) !important;
+    }
+
+    .text-gray-600,
+    .text-gray-500 {
+        color: var(--text-muted) !important;
+    }
+
+    .text-indigo-600,
+    .text-indigo-700,
+    .text-blue-600,
+    .text-blue-800 {
+        color: var(--techno-green-bright) !important;
+    }
+
+    .bg-indigo-500,
+    .bg-indigo-600,
+    .bg-indigo-700,
+    .bg-indigo-800,
+    .bg-indigo-900,
+    .bg-blue-500,
+    .bg-blue-600,
+    .bg-blue-700 {
+        background-color: var(--techno-green-dark) !important;
+        border-color: var(--techno-green-primary) !important;
+        color: white !important;
+    }
+
+    .hover\:bg-indigo-500:hover,
+    .hover\:bg-indigo-600:hover,
+    .hover\:bg-indigo-700:hover,
+    .hover\:bg-blue-600:hover,
+    .hover\:bg-blue-700:hover {
+        background-color: var(--techno-green-primary) !important;
+        box-shadow: 0 0 15px var(--techno-green-glow) !important;
+    }
+
+    .border-gray-100,
+    .border-gray-200,
+    .border-gray-300 {
+        border-color: var(--techno-border) !important;
+    }
+
+    /* Generic Inputs Override */
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    input[type="datetime-local"],
+    select,
+    textarea {
+        background-color: rgba(0, 0, 0, 0.5) !important;
+        border: 1px solid rgba(16, 185, 129, 0.3) !important;
+        color: white !important;
+        transition: all 0.3s ease;
+    }
+
+    input[type="text"]:focus,
+    input[type="email"]:focus,
+    input[type="password"]:focus,
+    input[type="number"]:focus,
+    input[type="datetime-local"]:focus,
+    select:focus,
+    textarea:focus {
+        border-color: var(--techno-green-bright) !important;
+        box-shadow: 0 0 0 2px var(--techno-green-glow) !important;
+        outline: none !important;
+    }
+
+    /* Specific overriding of navigation gradients to match new theme */
+    .bg-gradient-to-r.from-indigo-600.to-purple-700,
+    .bg-gradient-to-br.from-indigo-500.to-purple-600 {
+        background: linear-gradient(135deg, var(--techno-green-dark), #033a27) !important;
+    }
+
+    /* Buttons */
+    button {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+
+}
+
+@layer components {
+    .glass-panel {
+        @apply bg-black/40 backdrop-blur-xl border border-emerald-500/20 shadow-2xl rounded-2xl;
+    }
+
+    .glow-button {
+        @apply bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all border border-emerald-400/50;
+    }
+}

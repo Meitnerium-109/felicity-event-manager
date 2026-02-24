@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import TicketModal from '../components/TicketModal';
+import { getGoogleCalendarUrl, getOutlookCalendarUrl, downloadIcsFile } from '../utils/calendarUtils';
 
 const MyRegistrations = () => {
     const [registrations, setRegistrations] = useState([]);
@@ -9,6 +10,7 @@ const MyRegistrations = () => {
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState('Normal');
     const [selectedTicket, setSelectedTicket] = useState(null);
+    const [openCalendarMenu, setOpenCalendarMenu] = useState(null);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -179,6 +181,32 @@ const MyRegistrations = () => {
                         >
                             Cancel Registration
                         </button>
+                    )}
+
+                    {isUpcoming && event.status !== 'Cancelled' && (
+                        <div className="relative mt-1">
+                            <button
+                                onClick={() => setOpenCalendarMenu(openCalendarMenu === registration._id ? null : registration._id)}
+                                className="w-full py-2 px-4 shadow-sm text-sm font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md hover:bg-indigo-100 transition flex justify-center items-center gap-2"
+                            >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                Add to Calendar
+                            </button>
+
+                            {openCalendarMenu === registration._id && (
+                                <div className="absolute z-10 bottom-full mb-1 w-full bg-white border border-gray-200 rounded-md shadow-xl py-1 overflow-hidden transform origin-bottom transition-all">
+                                    <a href={getGoogleCalendarUrl(event)} target="_blank" rel="noreferrer" className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 border-b border-gray-50 flex items-center gap-2">
+                                        Google Calendar
+                                    </a>
+                                    <a href={getOutlookCalendarUrl(event)} target="_blank" rel="noreferrer" className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 border-b border-gray-50 flex items-center gap-2">
+                                        Outlook Calendar
+                                    </a>
+                                    <button onClick={() => downloadIcsFile(event)} className="block w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                                        Download .ics File
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>

@@ -1,7 +1,8 @@
-import { useState, useEffect, useContext, useMemo } from 'react';
+import { useState, useEffect, useContext, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
+import QRScannerModal from '../components/QRScannerModal';
 
 function OrganizerEventDetails() {
     const { id } = useParams();
@@ -14,31 +15,33 @@ function OrganizerEventDetails() {
     const [error, setError] = useState('');
     const [statusUpdating, setStatusUpdating] = useState(false);
 
-    // Filters
+    // Filters & Modals
     const [searchTerm, setSearchTerm] = useState('');
     const [attendanceFilter, setAttendanceFilter] = useState('All');
+    const [activeTab, setActiveTab] = useState('participants'); // 'participants' or 'pendingOrders'
+    const [showScanner, setShowScanner] = useState(false);
+
+    const fetchDetails = useCallback(async () => {
+        try {
+            setLoading(true);
+            const [eventRes, participantsRes] = await Promise.all([
+                api.get(`/events/${id}`),
+                api.get(`/events/${id}/participants`)
+            ]);
+
+            setEvent(eventRes.data.event);
+            setParticipants(participantsRes.data.registrations || []);
+        } catch (err) {
+            console.error('Failed to load event details:', err);
+            setError('Could not load event data or you do not have permission.');
+        } finally {
+            setLoading(false);
+        }
+    }, [id]);
 
     useEffect(() => {
-        const fetchDetails = async () => {
-            try {
-                setLoading(true);
-                const [eventRes, participantsRes] = await Promise.all([
-                    api.get(`/events/${id}`),
-                    api.get(`/events/${id}/participants`)
-                ]);
-
-                setEvent(eventRes.data.event);
-                setParticipants(participantsRes.data.registrations || []);
-            } catch (err) {
-                console.error('Failed to load event details:', err);
-                setError('Could not load event data or you do not have permission.');
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchDetails();
-    }, [id]);
+    }, [fetchDetails]);
 
     const handleStatusChange = async (newStatus) => {
         try {
@@ -54,9 +57,50 @@ function OrganizerEventDetails() {
         }
     };
 
+    const handleReviewOrder = async (registrationId, reviewStatus) => {
+        if (!window.confirm(`Are you sure you want to ${reviewStatus.toLowerCase()} this order?`)) return;
+        try {
+            const res = await api.put(`/registrations/review/${registrationId}`, { reviewStatus });
+            alert(res.data.message);
+
+            // Optimistically update the local state
+            setParticipants(prev => prev.map(reg => {
+                if (reg._id === registrationId) {
+                    return { ...reg, status: reviewStatus };
+                }
+                return reg;
+            }));
+
+            // Decrement stock if approved locally
+            if (reviewStatus === 'Approved') {
+                setEvent(prev => ({ ...prev, stockQuantity: prev.stockQuantity - 1 }));
+            }
+        } catch (err) {
+            console.error('Review order failed:', err);
+            alert(err.response?.data?.message || `Failed to ${reviewStatus.toLowerCase()} order.`);
+        }
+    };
+
+    const handleManualOverride = async (ticketId) => {
+        if (!window.confirm("Mark participant as manually checked-in?")) return;
+
+        try {
+            const res = await api.put('/registrations/attendance', { ticketId, isManualOverride: true });
+            alert(res.data.message);
+            // Refresh table
+            fetchDetails();
+        } catch (err) {
+            console.error('Manual override failed:', err);
+            alert(err.response?.data?.message || 'Failed to manually verify ticket.');
+        }
+    };
+
     // Derived states
     const filteredParticipants = useMemo(() => {
         return participants.filter(reg => {
+            // Exclude pending orders from the main participants list unless they are explicitly successful or we want all
+            if (activeTab === 'participants' && reg.status === 'Pending Approval') return false;
+
             const userObj = reg.participantId || {};
             const name = (userObj.name || `${userObj.firstName || ''} ${userObj.lastName || ''}`).toLowerCase();
             const email = (userObj.email || '').toLowerCase();
@@ -66,20 +110,26 @@ function OrganizerEventDetails() {
 
             let matchesAttendance = true;
             if (attendanceFilter !== 'All') {
-                const status = reg.attendanceStatus || 'Absent'; // Default if null
-                matchesAttendance = status === attendanceFilter;
+                const isPresent = reg.attendanceStatus === true;
+                matchesAttendance = attendanceFilter === 'Present' ? isPresent : !isPresent;
             }
 
             return matchesSearch && matchesAttendance;
         });
-    }, [participants, searchTerm, attendanceFilter]);
+    }, [participants, searchTerm, attendanceFilter, activeTab]);
+
+    const pendingOrders = useMemo(() => {
+        return participants.filter(reg => reg.status === 'Pending Approval');
+    }, [participants]);
 
     // Analytics calculations
     const analytics = useMemo(() => {
         if (!event) return { regCount: 0, attendanceCount: 0, revenue: 0, teamCompletion: 'N/A' };
 
-        const regCount = participants.length;
-        const attendanceCount = participants.filter(r => r.attendanceStatus === 'Present' || r.attendanceStatus === 'Attended').length;
+        // Exclude pending merchandise orders from hard counts until approved
+        const validRegs = participants.filter(r => r.status !== 'Pending Approval' && r.status !== 'Rejected');
+        const regCount = validRegs.length;
+        const attendanceCount = validRegs.filter(r => r.attendanceStatus === true).length;
         const revenue = regCount * (event.fee || 0);
 
         let teamCompletion = 'N/A';
@@ -99,7 +149,7 @@ function OrganizerEventDetails() {
         }
 
         // Vanilla JavaScript CSV generation
-        const headers = ['Name', 'Email', 'Registration Date', 'Payment Status', 'Team Name', 'Attendance Status'];
+        const headers = ['Name', 'Email', 'Registration Date', 'Payment Status', 'Team Name', 'Attendance Status', 'Scan Timestamp'];
 
         const rows = filteredParticipants.map(reg => {
             const userObj = reg.participantId || {};
@@ -108,7 +158,8 @@ function OrganizerEventDetails() {
             const date = new Date(reg.createdAt).toLocaleDateString('en-US');
             const paymentStatus = reg.paymentStatus || 'Pending';
             const teamName = reg.teamName || 'N/A';
-            const attendanceStatus = reg.attendanceStatus || 'Absent';
+            const attendanceStatus = reg.attendanceStatus ? 'Present' : 'Absent';
+            const logTimestamp = reg.attendanceTimestamp ? new Date(reg.attendanceTimestamp).toLocaleString('en-US') : 'N/A';
 
             // Escape quotes inside cells
             const escapeCSV = (str) => `"${String(str).replace(/"/g, '""')}"`;
@@ -119,7 +170,8 @@ function OrganizerEventDetails() {
                 escapeCSV(date),
                 escapeCSV(paymentStatus),
                 escapeCSV(teamName),
-                escapeCSV(attendanceStatus)
+                escapeCSV(attendanceStatus),
+                escapeCSV(logTimestamp)
             ].join(',');
         });
 
@@ -246,8 +298,12 @@ function OrganizerEventDetails() {
                             <p className="text-3xl font-black text-green-600">₹{analytics.revenue}</p>
                         </div>
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col justify-center">
-                            <p className="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-2">Attendance</p>
-                            <p className="text-3xl font-black text-indigo-600">{analytics.attendanceCount}</p>
+                            <p className="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-2">Live Attendance</p>
+                            <p className="text-3xl font-black text-indigo-600 mb-2">{analytics.attendanceCount} <span className="text-sm font-bold text-gray-400">/ {analytics.regCount} Scanned</span></p>
+                            <button onClick={() => setShowScanner(true)} className="mt-2 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors text-sm flex items-center justify-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path></svg>
+                                Launch QR Scanner
+                            </button>
                         </div>
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col justify-center">
                             <p className="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-2">Team Metric</p>
@@ -255,6 +311,29 @@ function OrganizerEventDetails() {
                         </div>
                     </div>
                 </div>
+
+                {/* Tabs Controller Space (Merchandise Only) */}
+                {event.eventType === 'Merchandise' && (
+                    <div className="flex space-x-4 border-b border-gray-200">
+                        <button
+                            onClick={() => setActiveTab('participants')}
+                            className={`pb-4 px-2 font-bold text-sm tracking-wide uppercase transition-colors ${activeTab === 'participants' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            All Participants
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('pendingOrders')}
+                            className={`pb-4 px-2 font-bold text-sm tracking-wide uppercase transition-colors flex items-center gap-2 ${activeTab === 'pendingOrders' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            Pending Orders
+                            {pendingOrders.length > 0 && (
+                                <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-black">
+                                    {pendingOrders.length}
+                                </span>
+                            )}
+                        </button>
+                    </div>
+                )}
 
                 {/* Table & Controls Section */}
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
@@ -295,72 +374,153 @@ function OrganizerEventDetails() {
                         </button>
                     </div>
 
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-white">
-                                <tr>
-                                    <th scope="col" className="px-6 py-4 text-left text-[10px] font-black tracking-widest uppercase text-gray-500">Participant Info</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-[10px] font-black tracking-widest uppercase text-gray-500">Registration Date</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-[10px] font-black tracking-widest uppercase text-gray-500">Payment Status</th>
-                                    <th scope="col" className="px-6 py-4 text-left text-[10px] font-black tracking-widest uppercase text-gray-500">Team Name</th>
-                                    <th scope="col" className="px-6 py-4 text-right text-[10px] font-black tracking-widest uppercase text-gray-500">Attendance</th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-100">
-                                {filteredParticipants.length === 0 ? (
+                    {activeTab === 'participants' && (
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-white">
                                     <tr>
-                                        <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
-                                            No participants found matching your filters.
-                                        </td>
+                                        <th scope="col" className="px-6 py-4 text-left text-[10px] font-black tracking-widest uppercase text-gray-500">Participant Info</th>
+                                        <th scope="col" className="px-6 py-4 text-left text-[10px] font-black tracking-widest uppercase text-gray-500">Registration Date</th>
+                                        <th scope="col" className="px-6 py-4 text-left text-[10px] font-black tracking-widest uppercase text-gray-500">Payment Status</th>
+                                        <th scope="col" className="px-6 py-4 text-left text-[10px] font-black tracking-widest uppercase text-gray-500">Team Name</th>
+                                        <th scope="col" className="px-6 py-4 text-center text-[10px] font-black tracking-widest uppercase text-gray-500">Attendance</th>
                                     </tr>
-                                ) : (
-                                    filteredParticipants.map((reg) => {
-                                        const userObj = reg.participantId || {};
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-100">
+                                    {filteredParticipants.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
+                                                No participants found matching your filters.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredParticipants.map((reg) => {
+                                            const userObj = reg.participantId || {};
+                                            const name = userObj.name || `${userObj.firstName || ''} ${userObj.lastName || ''}`.trim() || 'Unknown';
+                                            const email = userObj.email || 'No email';
+
+                                            return (
+                                                <tr key={reg._id} className="hover:bg-gray-50">
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <div className="flex items-center">
+                                                            <div className="h-9 w-9 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-full flex items-center justify-center text-indigo-700 font-bold mr-3 border border-indigo-200">
+                                                                {name.charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-sm font-bold text-gray-900">{name}</div>
+                                                                <div className="text-xs text-gray-500">{email}</div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium font-mono">
+                                                        {new Date(reg.createdAt).toLocaleDateString()}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase tracking-wider ${reg.paymentStatus === 'Completed' || reg.paymentStatus === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                                                            {reg.paymentStatus || 'Pending'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">
+                                                        {reg.teamName || '-'}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
+                                                        {reg.attendanceStatus ? (
+                                                            <div className="flex items-center justify-center flex-col">
+                                                                <span className="px-2.5 py-1 inline-flex text-[10px] leading-5 font-black uppercase tracking-wider rounded border bg-indigo-50 border-indigo-200 text-indigo-700">
+                                                                    Scanned
+                                                                </span>
+                                                                <span className="text-[10px] text-gray-400 mt-1 font-mono">
+                                                                    {new Date(reg.attendanceTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex flex-col items-center gap-2">
+                                                                <span className="px-2.5 py-1 inline-flex text-[10px] leading-5 font-black uppercase tracking-wider rounded border bg-gray-50 border-gray-200 text-gray-500">
+                                                                    Absent
+                                                                </span>
+                                                                <button onClick={() => handleManualOverride(reg.ticketId)} className="text-[10px] bg-white hover:bg-indigo-50 text-indigo-600 border border-indigo-200 py-1 px-2 rounded transition-colors font-bold uppercase">
+                                                                    Override
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {event.eventType === 'Merchandise' && activeTab === 'pendingOrders' && (
+                        <div className="p-6 bg-gray-50 flex flex-col gap-6">
+                            {pendingOrders.length === 0 ? (
+                                <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-200 rounded-xl">
+                                    No pending orders awaiting review.
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {pendingOrders.map(order => {
+                                        const userObj = order.participantId || {};
                                         const name = userObj.name || `${userObj.firstName || ''} ${userObj.lastName || ''}`.trim() || 'Unknown';
-                                        const email = userObj.email || 'No email';
 
                                         return (
-                                            <tr key={reg._id} className="hover:bg-gray-50">
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex items-center">
-                                                        <div className="h-9 w-9 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-full flex items-center justify-center text-indigo-700 font-bold mr-3 border border-indigo-200">
-                                                            {name.charAt(0).toUpperCase()}
-                                                        </div>
-                                                        <div>
-                                                            <div className="text-sm font-bold text-gray-900">{name}</div>
-                                                            <div className="text-xs text-gray-500">{email}</div>
-                                                        </div>
+                                            <div key={order._id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+                                                <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                                                    <div>
+                                                        <p className="font-bold text-gray-900">{name}</p>
+                                                        <p className="text-xs text-gray-500">{new Date(order.createdAt).toLocaleString()}</p>
                                                     </div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium font-mono">
-                                                    {new Date(reg.createdAt).toLocaleDateString()}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-bold rounded-full uppercase tracking-wider ${reg.paymentStatus === 'Completed' || reg.paymentStatus === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                                                        {reg.paymentStatus || 'Pending'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">
-                                                    {reg.teamName || '-'}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                                                    <span className={`px-2.5 py-1 inline-flex text-[10px] leading-5 font-black uppercase tracking-wider rounded border ${(reg.attendanceStatus === 'Present' || reg.attendanceStatus === 'Attended')
-                                                            ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                                                            : 'bg-gray-50 border-gray-200 text-gray-500'
-                                                        }`}>
-                                                        {reg.attendanceStatus || 'Absent'}
-                                                    </span>
-                                                </td>
-                                            </tr>
+                                                </div>
+
+                                                <div className="p-4 flex-1 flex flex-col items-center justify-center bg-gray-100/50">
+                                                    {order.paymentProof ? (
+                                                        <img
+                                                            src={order.paymentProof}
+                                                            alt={`Payment proof from ${name}`}
+                                                            className="max-h-48 w-full object-contain cursor-pointer hover:opacity-90 transition rounded shadow-sm border border-gray-200"
+                                                            onClick={() => window.open(order.paymentProof, '_blank')}
+                                                            title="Click to enlarge"
+                                                        />
+                                                    ) : (
+                                                        <div className="text-sm text-gray-500 italic py-8">No receipt attached</div>
+                                                    )}
+                                                </div>
+
+                                                <div className="p-4 bg-white flex gap-3">
+                                                    <button
+                                                        onClick={() => handleReviewOrder(order._id, 'Approved')}
+                                                        className="flex-1 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 font-bold py-2 rounded-lg border border-green-200 transition text-sm"
+                                                    >
+                                                        Approve
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleReviewOrder(order._id, 'Rejected')}
+                                                        className="flex-1 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800 font-bold py-2 rounded-lg border border-red-200 transition text-sm"
+                                                    >
+                                                        Reject
+                                                    </button>
+                                                </div>
+                                            </div>
                                         );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
             </div>
+
+            {/* Modal Injection */}
+            {showScanner && (
+                <QRScannerModal
+                    eventId={event._id}
+                    onClose={() => setShowScanner(false)}
+                    onScanSuccessCallback={fetchDetails}
+                />
+            )}
         </div>
     );
 }

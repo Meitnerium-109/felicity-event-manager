@@ -62,6 +62,10 @@ const eventSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  purchaseLimit: {
+    type: Number,
+    default: 1
+  },
   status: {
     type: String,
     enum: ['Draft', 'Published', 'Ongoing', 'Completed', 'Closed'],

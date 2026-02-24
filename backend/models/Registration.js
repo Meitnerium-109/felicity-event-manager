@@ -44,6 +44,25 @@ const registrationSchema = new mongoose.Schema({
     type: [itemSelectionSchema],
     // for merchandise events
   },
+  paymentProof: {
+    type: String, // base64 image data
+  },
+  status: {
+    type: String,
+    enum: ['Successful', 'Pending Approval', 'Rejected'],
+    default: 'Successful'
+  },
+  attendanceStatus: {
+    type: Boolean,
+    default: false,
+  },
+  attendanceTimestamp: {
+    type: Date,
+  },
+  auditLog: {
+    type: [String],
+    default: [],
+  },
   createdAt: {
     type: Date,
     default: Date.now,

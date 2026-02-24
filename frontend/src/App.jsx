@@ -21,6 +21,8 @@ import OrganiserDetail from './pages/OrganiserDetail';
 import OrganizerNavbar from './components/OrganizerNavbar';
 import OrganizerProfile from './pages/OrganizerProfile';
 import AdminNavbar from './components/AdminNavbar';
+import ResetRequest from './pages/ResetRequest';
+import AdminPasswordRequests from './pages/AdminPasswordRequests';
 
 function App() {
   const { user } = useContext(AuthContext);
@@ -38,6 +40,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/request-reset" element={<ResetRequest />} />
         <Route path="/create-event" element={user?.role === 'Organizer' || user?.role === 'organiser' ? <CreateEvent /> : <Navigate to="/login" />} />
         <Route path="/browse" element={<EventFeed />} />
         <Route path="/events/:id" element={<EventDetails />} />
@@ -57,8 +60,8 @@ function App() {
         {/* Admin Dashboard */}
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
 
-        {/* Admin Password Resets Placeholder */}
-        <Route path="/admin/password-resets" element={user?.role === 'Admin' || user?.role === 'admin' ? <div className="p-10 text-center text-gray-500 font-bold">Password Reset Requests (Coming Soon)</div> : <Navigate to="/login" />} />
+        {/* Admin Password Resets Dashboard */}
+        <Route path="/admin/password-resets" element={user?.role === 'Admin' || user?.role === 'admin' ? <AdminPasswordRequests /> : <Navigate to="/login" />} />
 
         {/* Participant Dashboard */}
         <Route path="/dashboard" element={<ParticipantDashboard />} />

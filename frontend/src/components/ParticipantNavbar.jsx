@@ -15,7 +15,7 @@ function ParticipantNavbar() {
     const navLinks = [
         { name: 'Dashboard', path: '/dashboard' },
         { name: 'Browse Events', path: '/browse' },
-        { name: 'Clubs/Organisers', path: '/clubs' },
+        { name: 'Clubs/Organisers', path: '/organisers' },
         { name: 'Profile', path: '/profile' }
     ];
 
@@ -38,8 +38,8 @@ function ParticipantNavbar() {
                                     key={link.name}
                                     to={link.path}
                                     className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${location.pathname === link.path
-                                            ? 'bg-indigo-700 text-white shadow-inner'
-                                            : 'text-indigo-100 hover:bg-indigo-500 hover:text-white'
+                                        ? 'bg-indigo-700 text-white shadow-inner'
+                                        : 'text-indigo-100 hover:bg-indigo-500 hover:text-white'
                                         }`}
                                 >
                                     {link.name}

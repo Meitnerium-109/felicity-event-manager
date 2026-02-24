@@ -32,8 +32,12 @@ export default function EventFeed() {
         if (endDate) params.endDate = endDate;
         if (followedClubsOnly) params.followedClubsOnly = true;
 
+        const token = localStorage.getItem('felicity_token');
         const [eventsRes, trendingRes] = await Promise.all([
-          api.get('/events', { params }), // sending advanced filters to backend
+          api.get('/events', {
+            params,
+            headers: { Authorization: `Bearer ${token}` }
+          }), // sending advanced filters to backend
           api.get('/events/trending')     // fetch top 5 trending events
         ]);
 

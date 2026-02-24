@@ -78,7 +78,10 @@ function Login() {
         </form>
 
         <p className="text-center text-sm text-gray-600 mt-4">
-          Don't have an account? <a href="/register" className="text-blue-600 hover:underline">Sign Up</a>
+          Don't have an account? <a href="/register" className="text-blue-600 hover:underline font-medium">Sign Up</a>
+        </p>
+        <p className="text-center text-xs text-gray-500 mt-2">
+          Organiser access issue? <a href="/request-reset" className="text-blue-500 hover:underline font-medium">Request Admin Reset</a>
         </p>
       </div>
     </div>

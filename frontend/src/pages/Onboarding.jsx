@@ -26,8 +26,9 @@ function Onboarding() {
 
         const fetchOrganizers = async () => {
             try {
-                const res = await api.get('/users/active-organizers');
-                setOrganizers(res.data.organizers || []);
+                // Ensure auth headers are automatically attached by your api axios instance wrapper
+                const res = await api.get('/users/organisers');
+                setOrganizers(res.data.organisers || []);
             } catch (err) {
                 console.error('failed to fetch organizers', err);
                 setError('Failed to load clubs. You can continue anyway.');

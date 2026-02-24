@@ -66,16 +66,21 @@ export const registerForEvent = async (req, res) => {
       return res.status(404).json({ message: 'event not found' });
     }
 
-    // 2. Merchandise Stock Validation
+    // 2. Merchandise Validation
     if (event.eventType === 'Merchandise') {
       if (!event.stockQuantity || event.stockQuantity <= 0) {
         return res.status(400).json({ message: 'Out of stock' });
       }
+      if (!req.body.paymentProof) {
+        return res.status(400).json({ message: 'Payment screenshot represents a mandatory field for merchandise.' });
+      }
     }
+
+    const isMerch = event.eventType === 'Merchandise';
 
     // 3. checking if the capacity has been reached
     const limit = event.registrationLimit || event.capacity;
-    if (limit) {
+    if (limit && !isMerch) {
       const registrationCount = await Registration.countDocuments({ eventId });
       if (registrationCount >= limit) {
         return res.status(400).json({ message: 'event is full, no more registrations allowed' });
@@ -88,18 +93,26 @@ export const registerForEvent = async (req, res) => {
       participantId: req.user._id,
     });
 
-    if (existingRegistration) {
+    if (existingRegistration && !isMerch) {
       return res.status(400).json({ message: 'you are already registered for this event' });
     }
 
-    // 5. Generate Unique Ticket ID
-    const ticketId = crypto.randomBytes(4).toString('hex').toUpperCase();
+    // For merch, optionally enforce a purchase limit check here if needed later, but skip the duplicate check for now so they can buy multiple "orders" if desired, or let's strictly enforce `purchaseLimit`. Let's enforce purchase limit:
+    if (existingRegistration && isMerch) {
+      // Basic implementation for now: users can only place one order per checkout flow
+      return res.status(400).json({ message: 'you have already placed an order for this merchandise' });
+    }
+
+    // 5. Generate Unique Ticket ID (Only for non-merchandise at first)
+    const ticketId = isMerch ? undefined : crypto.randomBytes(4).toString('hex').toUpperCase();
 
     // 6. creating the registration
     const registration = new Registration({
       eventId,
       participantId: req.user._id,
       ticketId,
+      status: isMerch ? 'Pending Approval' : 'Successful',
+      paymentProof: req.body.paymentProof,
       // store any answers or itemSelections from req.body if provided
       answers: req.body.answers || [],
       itemSelections: req.body.itemSelections || []
@@ -107,13 +120,15 @@ export const registerForEvent = async (req, res) => {
 
     await registration.save();
 
-    // 7. Decrement stock if merchandise
-    if (event.eventType === 'Merchandise') {
-      event.stockQuantity -= 1;
-      await event.save();
+    // 7. For Merchandise, stop here and respond
+    if (isMerch) {
+      return res.status(201).json({
+        message: 'Order placed. Pending Organiser approval.',
+        registration,
+      });
     }
 
-    // 8. Generate QR Code and Send Email
+    // 8. Generate QR Code and Send Email for NON-merchandise
     try {
       // Create user string data for QR
       const qrData = JSON.stringify({
@@ -147,7 +162,7 @@ export const registerForEvent = async (req, res) => {
             </div>
 
             <p style="font-size: 14px; color: #666; padding-top: 20px; border-top: 1px solid #eee;">
-              Please show this QR code at the event venue. If this is a merchandise purchase, show this ticket to collect your items.
+              Please show this QR code at the event venue.
             </p>
           </div>
         </div>
@@ -219,5 +234,167 @@ export const getParticipantHistory = async (req, res) => {
   } catch (error) {
     console.log('get participant history error:', error.message);
     res.status(500).json({ message: 'server error while fetching history' });
+  }
+};
+
+// Review merchandise order (Organiser Only)
+export const reviewMerchandiseOrder = async (req, res) => {
+  try {
+    const { registrationId } = req.params;
+    const { reviewStatus } = req.body; // 'Approved' or 'Rejected'
+
+    if (!['Approved', 'Rejected'].includes(reviewStatus)) {
+      return res.status(400).json({ message: 'Invalid review status. Must be Approved or Rejected.' });
+    }
+
+    // 1. Fetch registration
+    const registration = await Registration.findById(registrationId).populate('eventId participantId');
+    if (!registration) {
+      return res.status(404).json({ message: 'Registration not found' });
+    }
+
+    const event = registration.eventId;
+
+    // 2. Validate Organiser Security
+    if (event.organiserId.toString() !== req.user._id.toString() && event.organizerId?.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You can only review orders for your own events' });
+    }
+
+    // 3. Prevent duplicate processing
+    if (registration.status !== 'Pending Approval') {
+      return res.status(400).json({ message: 'This order is already processed.' });
+    }
+
+    if (reviewStatus === 'Rejected') {
+      registration.status = 'Rejected';
+      await registration.save();
+      return res.status(200).json({ message: 'Order rejected successfully.', registration });
+    }
+
+    // 4. Approved logic: Stock Check
+    if (event.stockQuantity <= 0) {
+      return res.status(400).json({ message: 'Out of stock! Cannot approve order.' });
+    }
+
+    // Generate ticket
+    const ticketId = crypto.randomBytes(4).toString('hex').toUpperCase();
+
+    // Decrease Stock
+    event.stockQuantity -= 1;
+    await event.save();
+
+    // Save registration
+    registration.status = 'Successful';
+    registration.ticketId = ticketId;
+    await registration.save();
+
+    // Generate QR and Send Email
+    try {
+      const qrData = JSON.stringify({
+        ticketId,
+        eventId: event._id,
+        userId: registration.participantId._id
+      });
+      const qrCodeBase64 = await QRCode.toDataURL(qrData);
+
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-w: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
+          <div style="background-color: #10B981; padding: 20px; text-align: center;">
+            <h1 style="color: white; margin: 0;">Merchandise Order Approved!</h1>
+          </div>
+          <div style="padding: 30px;">
+            <p style="font-size: 16px; color: #333;">Hi <strong>${registration.participantId.name}</strong>,</p>
+            <p style="font-size: 16px; color: #333;">Your payment for <strong>${event.eventName || event.title}</strong> has been verified.</p>
+            
+            <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin: 25px 0; text-align: center;">
+              <p style="margin: 0; font-size: 14px; color: #666; text-transform: uppercase;">Your Collectable Ticket ID</p>
+              <h2 style="margin: 10px 0 0 0; color: #111827; letter-spacing: 2px;">${ticketId}</h2>
+            </div>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <p style="font-size: 14px; color: #666; margin-bottom: 10px;">Your pickup QR Code</p>
+              <img src="${qrCodeBase64}" alt="Ticket QR Code" style="width: 200px; height: 200px; border: 1px solid #ddd; border-radius: 10px;" />
+            </div>
+
+            <p style="font-size: 14px; color: #666; padding-top: 20px; border-top: 1px solid #eee;">
+              Please show this QR code to the organiser to collect your items.
+            </p>
+          </div>
+        </div>
+      `;
+
+      await sendEmail({
+        to: registration.participantId.email,
+        subject: `Order Approved: ${event.eventName || event.title}`,
+        html: emailHtml
+      });
+    } catch (emailError) {
+      console.error('Failed to generate QR or send email upon approval:', emailError);
+    }
+
+    res.status(200).json({
+      message: 'Order approved and ticket dispatched.',
+      registration,
+    });
+  } catch (error) {
+    console.log('review merchandise order error:', error.message);
+    res.status(500).json({ message: 'server error while reviewing order' });
+  }
+};
+
+// mark attendance (via QR scan or Manual Override)
+export const markAttendance = async (req, res) => {
+  try {
+    const { ticketId, isManualOverride } = req.body;
+
+    if (!ticketId) {
+      return res.status(400).json({ message: 'Ticket ID is required' });
+    }
+
+    // 1. Find the registration
+    const registration = await Registration.findOne({ ticketId }).populate('eventId participantId');
+
+    if (!registration) {
+      return res.status(404).json({ message: 'Invalid Ticket! Registration not found.' });
+    }
+
+    const event = registration.eventId;
+
+    // 2. Validate Organiser Security (must own the event)
+    if (event.organiserId.toString() !== req.user._id.toString() && event.organizerId?.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'You can only mark attendance for your own events' });
+    }
+
+    // 3. Check if already marked present
+    if (registration.attendanceStatus === true) {
+      return res.status(400).json({
+        message: 'Duplicate scan rejected! Participant already marked present.',
+        previousScanTime: registration.attendanceTimestamp,
+        participantName: registration.participantId.name
+      });
+    }
+
+    // 4. Mark attendance
+    const now = new Date();
+    registration.attendanceStatus = true;
+    registration.attendanceTimestamp = now;
+
+    const logEntry = isManualOverride
+      ? `Manual Override by Organiser at ${now.toISOString()}`
+      : `Scanned via QR at ${now.toISOString()}`;
+
+    registration.auditLog.push(logEntry);
+
+    await registration.save();
+
+    res.status(200).json({
+      message: 'Attendance marked successfully!',
+      participantName: registration.participantId.name,
+      registration
+    });
+
+  } catch (error) {
+    console.log('mark attendance error:', error.message);
+    res.status(500).json({ message: 'Server error while marking attendance.' });
   }
 };

@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import { User } from '../models/User.js';
 import { Event } from '../models/Event.js';
+import { PasswordReset } from '../models/PasswordReset.js';
 
 // helper function to generate random password
 const generateRandomPassword = () => {
@@ -162,5 +163,78 @@ export const deleteUser = async (req, res) => {
   } catch (error) {
     console.log('delete user error:', error.message);
     res.status(500).json({ message: 'server error while deleting user' });
+  }
+};
+
+// get all password reset requests
+export const getResetRequests = async (req, res) => {
+  try {
+    const requests = await PasswordReset.find().sort({ createdAt: -1 });
+    res.status(200).json({
+      message: 'Reset requests fetched successfully',
+      requests
+    });
+  } catch (error) {
+    console.log('get reset requests error:', error.message);
+    res.status(500).json({ message: 'server error while fetching reset requests' });
+  }
+};
+
+// review a password reset request
+export const reviewResetRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, adminComment } = req.body;
+
+    if (!['Approved', 'Rejected'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status. Must be Approved or Rejected.' });
+    }
+
+    const resetRequest = await PasswordReset.findById(id);
+    if (!resetRequest) {
+      return res.status(404).json({ message: 'Reset request not found.' });
+    }
+
+    if (resetRequest.status !== 'Pending') {
+      return res.status(400).json({ message: 'This request has already been processed.' });
+    }
+
+    if (status === 'Rejected') {
+      resetRequest.status = 'Rejected';
+      resetRequest.adminComment = adminComment || 'Request rejected by administrator.';
+      await resetRequest.save();
+
+      return res.status(200).json({ message: 'Reset request rejected successfully.' });
+    }
+
+    // Processing 'Approved' status
+    const organizerUser = await User.findOne({ email: resetRequest.organiserEmail, role: { $in: ['Organizer', 'organiser'] } });
+
+    if (!organizerUser) {
+      return res.status(404).json({ message: `No Organiser found with the email ${resetRequest.organiserEmail}.` });
+    }
+
+    // Generate new secure password
+    const plainPassword = generateRandomPassword();
+    const hashedPassword = await bcrypt.hash(plainPassword, 10);
+
+    organizerUser.password = hashedPassword;
+    await organizerUser.save();
+
+    // Update the request document
+    resetRequest.status = 'Approved';
+    resetRequest.adminComment = adminComment || 'Password reset artificially and generated.';
+    await resetRequest.save();
+
+    res.status(200).json({
+      message: 'Password reset completely successful.',
+      credentials: {
+        loginEmail: organizerUser.email,
+        plainPassword: plainPassword
+      }
+    });
+  } catch (error) {
+    console.log('review reset request error:', error.message);
+    res.status(500).json({ message: 'server error while reviewing reset request' });
   }
 };

@@ -17,8 +17,12 @@ const OrganisersList = () => {
     useEffect(() => {
         const fetchOrganisers = async () => {
             try {
-                setLoading(true);
-                const response = await api.get('/users/organisers');
+                const token = localStorage.getItem('felicity_token');
+                const response = await api.get('/users/organisers', {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                });
                 setOrganisers(response.data.organisers || []);
             } catch (err) {
                 setError(err.response?.data?.message || 'Failed to fetch organisers.');
@@ -49,7 +53,7 @@ const OrganisersList = () => {
 
             // Update auth context so the UI toggles globally
             if (response.data.user) {
-                login(response.data.user, localStorage.getItem('token'));
+                login(response.data.user, localStorage.getItem('felicity_token'));
             }
         } catch (err) {
             alert('Failed to update follow status.');

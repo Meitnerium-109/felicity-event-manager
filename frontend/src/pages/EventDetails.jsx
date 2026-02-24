@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
+import PurchaseModal from '../components/PurchaseModal';
 
 const EventDetails = () => {
     const { id } = useParams();
@@ -12,6 +13,8 @@ const EventDetails = () => {
     const [error, setError] = useState('');
     const [registering, setRegistering] = useState(false);
     const [participantCount, setParticipantCount] = useState(0);
+    const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+    const [hasOrdered, setHasOrdered] = useState(false);
 
     useEffect(() => {
         const fetchEventDetails = async () => {
@@ -19,22 +22,6 @@ const EventDetails = () => {
                 setLoading(true);
                 const response = await api.get(`/events/${id}`);
                 setEvent(response.data.event);
-
-                // Fetch participants count
-                try {
-                    // Usually this is organizer-only, but we might just need the count.
-                    // Instead, we can fetch all registrations or use a specific public count endpoint if exists.
-                    // Since we can't fetch all participants directly as a participant, we will rely on event metadata if available.
-                    // Wait, assignment says "if current number of registrations is >= registrationLimit".
-                    // Does Event have a registration count? Let's check backend or just assume we do.
-                    // Actually, getting count might fail if it's protected. We will fetch count by getting the event's registrations length? No, participant can't do that.
-                    // Let's create an endpoint or just use `event.participants.length` if it's there. 
-                    // Let's just use what was provided or make a basic GET request for count.
-                    // For now, let's assume `event` object might have `registrationsCount` or we'll add it to the backend `getEventById`.
-                } catch (e) {
-                    console.error(e);
-                }
-
             } catch (err) {
                 console.error('Error fetching event details:', err);
                 setError('Failed to load event details.');
@@ -47,16 +34,34 @@ const EventDetails = () => {
     }, [id]);
 
     const handleRegister = async () => {
+        if (event.eventType === 'Merchandise') {
+            setShowPurchaseModal(true);
+            return;
+        }
+
         try {
             setRegistering(true);
-            await api.post(`/registrations/${id}`);
-            alert('Successfully registered for the event!');
+            const res = await api.post(`/registrations/${id}`, {});
+            alert(res.data.message || 'Successfully registered for the event!');
             navigate('/my-events');
         } catch (err) {
             console.error('Registration failed:', err);
             alert(`Registration Failed: ${err.response?.data?.message || 'Please try again.'}`);
         } finally {
             setRegistering(false);
+        }
+    };
+
+    const handleMerchandiseCheckout = async (paymentProofBase64) => {
+        try {
+            const res = await api.post(`/registrations/${id}`, { paymentProof: paymentProofBase64 });
+            // Close modal, display success, change button text
+            setShowPurchaseModal(false);
+            setHasOrdered(true);
+            alert(res.data.message || 'Order placed successfully. Pending Organiser approval.');
+        } catch (err) {
+            console.error('Merchandise checkout failed:', err);
+            alert(`Checkout Failed: ${err.response?.data?.message || 'Please try again.'}`);
         }
     };
 
@@ -82,13 +87,9 @@ const EventDetails = () => {
         );
     }
 
-    // Determine strict blocking logic
     const now = new Date();
     const deadline = event.registrationDeadline ? new Date(event.registrationDeadline) : null;
     const isDeadlinePassed = deadline && now > deadline;
-
-    // We assume event object has currentRegistrations if populated, or we rely on participantCount if we implement it.
-    // If we haven't implemented currentRegistrations in getEventById, we'll just check if event returns it, else default to 0.
     const currentRegs = event.currentRegistrations || 0;
     const limit = event.registrationLimit || Infinity;
     const isFull = currentRegs >= limit;
@@ -96,20 +97,23 @@ const EventDetails = () => {
     let buttonText = 'Register Now';
     let buttonDisabled = false;
 
-    if (isDeadlinePassed) {
+    if (hasOrdered) {
+        buttonText = 'Order Pending Approval';
+        buttonDisabled = true;
+    } else if (isDeadlinePassed) {
         buttonText = 'Deadline Passed';
         buttonDisabled = true;
     } else if (event.eventType === 'Merchandise' && (!event.stockQuantity || event.stockQuantity <= 0)) {
         buttonText = 'Out of Stock';
         buttonDisabled = true;
-    } else if (isFull) {
+    } else if (isFull && event.eventType !== 'Merchandise') {
         buttonText = 'Registration Full';
         buttonDisabled = true;
     } else if (event.status === 'Closed' || event.status === 'Cancelled' || event.status === 'Completed') {
         buttonText = `Event ${event.status}`;
         buttonDisabled = true;
     } else if (event.eventType === 'Merchandise') {
-        buttonText = 'Purchase Merchandise';
+        buttonText = 'Proceed to Purchase';
     }
 
     return (
@@ -138,6 +142,11 @@ const EventDetails = () => {
                             <div className="text-3xl font-bold bg-white text-indigo-700 px-4 py-2 rounded-lg shadow-md inline-block">
                                 {event.fee > 0 ? `₹${event.fee}` : 'Free'}
                             </div>
+                            {event.eventType === 'Merchandise' && (
+                                <p className="text-sm text-indigo-100 mt-2 font-semibold bg-indigo-900/40 px-3 py-1 rounded inline-block">
+                                    {event.stockQuantity} in stock
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -152,8 +161,6 @@ const EventDetails = () => {
                                     {event.eventDescription || event.description || 'No description provided.'}
                                 </p>
                             </div>
-
-                            {/* Any Custom UI rendering like file links or similar could go here */}
                         </div>
 
                         <div className="space-y-6">
@@ -215,7 +222,7 @@ const EventDetails = () => {
                             onClick={handleRegister}
                             disabled={buttonDisabled || registering}
                             className={`px-10 py-3.5 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:-translate-y-0.5
-                                ${buttonDisabled
+                                ${buttonDisabled || registering
                                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
                                     : 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-xl'
                                 }`}
@@ -225,6 +232,15 @@ const EventDetails = () => {
                     </div>
                 </div>
             </div>
+
+            {/* Purchase Modal */}
+            {showPurchaseModal && (
+                <PurchaseModal
+                    event={event}
+                    onClose={() => setShowPurchaseModal(false)}
+                    onSubmit={handleMerchandiseCheckout}
+                />
+            )}
         </div>
     );
 };

@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User.js';
+import { PasswordReset } from '../models/PasswordReset.js';
 
 const generateToken = (userId, role) => {
   return jwt.sign({ userId, role }, process.env.JWT_SECRET || 'supersecretkey', {
@@ -100,5 +101,29 @@ export const logout = async (req, res) => {
   } catch (error) {
     console.log('Logout error:', error.message);
     res.status(500).json({ message: 'Server error during logout' });
+  }
+};
+
+export const requestPasswordReset = async (req, res) => {
+  try {
+    const { organiserEmail, clubName, reason } = req.body;
+
+    if (!organiserEmail || !clubName || !reason) {
+      return res.status(400).json({ message: 'Please provide all required fields.' });
+    }
+
+    const resetRequest = new PasswordReset({
+      organiserEmail: organiserEmail.toLowerCase(),
+      clubName,
+      reason,
+      status: 'Pending'
+    });
+
+    await resetRequest.save();
+
+    res.status(201).json({ message: 'Password reset request submitted successfully. Please wait for an Admin to review it.' });
+  } catch (error) {
+    console.log('Password reset request error:', error.message);
+    res.status(500).json({ message: 'Server error while submitting reset request.' });
   }
 };
