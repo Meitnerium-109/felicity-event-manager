@@ -8,9 +8,16 @@ const generateToken = (userId, role) => {
   });
 };
 
-export const register = async (req, res) => {
+export const registerParticipant = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { firstName, lastName, email, password, participantType, contactNumber, collegeName } = req.body;
+
+    if (participantType === 'IIIT') {
+      const iiitRegex = /@(iiit\.ac\.in|research\.iiit\.ac\.in|students\.iiit\.ac\.in)$/;
+      if (!iiitRegex.test(email)) {
+        return res.status(400).json({ message: 'IIIT participants must use an official @iiit.ac.in, @research.iiit.ac.in, or @students.iiit.ac.in email address.' });
+      }
+    }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -20,10 +27,15 @@ export const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = new User({
-      name,
+      name: `${firstName} ${lastName}`, // preserving the original required 'name' field
+      firstName,
+      lastName,
       email,
       password: hashedPassword,
-      role: role || 'Participant',
+      role: 'Participant', // Force role to Participant under all circumstances
+      participantType,
+      contactNumber,
+      collegeName: participantType === 'IIIT' ? 'IIIT Hyderabad' : collegeName
     });
 
     await user.save();
@@ -53,6 +65,10 @@ export const login = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    if (user.isActive === false) {
+      return res.status(403).json({ message: 'Account disabled by Admin. Please contact support.' });
     }
 
     const isPasswordMatch = await bcrypt.compare(password, user.password);

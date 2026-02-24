@@ -1,31 +1,73 @@
 import mongoose from 'mongoose';
 
+const customFieldSchema = new mongoose.Schema({
+  label: { type: String, required: true },
+  type: { type: String, enum: ['text', 'dropdown', 'checkbox', 'file'], required: true },
+  options: [{ type: String }], // Required if type is dropdown or checkbox
+  isRequired: { type: Boolean, default: false }
+});
+
 const eventSchema = new mongoose.Schema({
-  title: {
+  eventName: {
     type: String,
     required: true,
   },
-  description: {
+  eventDescription: {
     type: String,
     required: true,
   },
-  date: {
-    type: Date,
-    required: true,
-  },
-  venue: {
+  eventType: {
     type: String,
+    enum: ['Normal', 'Merchandise'],
     required: true,
-  },
-  capacity: {
-    type: Number,
-    default: null, // Optional field
   },
   category: {
     type: String,
     required: true,
     enum: ['Technical', 'Cultural', 'Sports', 'Social', 'Academic'],
   },
+  eligibility: {
+    type: String,
+    enum: ['IIIT', 'Non-IIIT', 'All'],
+    required: true,
+  },
+  registrationDeadline: {
+    type: Date,
+    required: true,
+  },
+  startDate: {
+    type: Date,
+    required: true,
+  },
+  endDate: {
+    type: Date,
+    required: true,
+  },
+  registrationLimit: {
+    type: Number,
+    required: true,
+  },
+  fee: {
+    type: Number,
+    default: 0,
+  },
+  venue: {
+    type: String,
+    required: true,
+  },
+  tags: [{
+    type: String
+  }],
+  stockQuantity: {
+    type: Number,
+    default: 0
+  },
+  status: {
+    type: String,
+    enum: ['Draft', 'Published', 'Ongoing', 'Completed', 'Closed'],
+    default: 'Draft',
+  },
+  customFormFields: [customFieldSchema], // Embedded subdocument array
   organiserId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

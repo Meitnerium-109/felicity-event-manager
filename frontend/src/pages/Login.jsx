@@ -1,5 +1,6 @@
 import { useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
 function Login() {
@@ -8,6 +9,7 @@ function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useContext(AuthContext);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -15,11 +17,19 @@ function Login() {
     setLoading(true);
     try {
       const response = await api.post('/auth/login', { email, password });
-      
       // THE LINE I FORGOT: This explicitly saves the VIP pass into local storage!
       localStorage.setItem('felicity_token', response.data.token);
-      
+
       login(response.data.user);
+
+      // Redirect based on role
+      if (response.data.user.role === 'Admin') {
+        navigate('/admin-dashboard');
+      } else if (response.data.user.role === 'Organizer') {
+        navigate('/organiser-dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error) {
       console.error('login failed:', error);
       setError(error.response?.data?.message || 'invalid credentials');
@@ -35,8 +45,8 @@ function Login() {
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label className="block text-gray-700 mb-2">Email Address</label>
-            <input 
-              type="email" 
+            <input
+              type="email"
               className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -45,8 +55,8 @@ function Login() {
           </div>
           <div className="mb-6">
             <label className="block text-gray-700 mb-2">Password</label>
-            <input 
-              type="password" 
+            <input
+              type="password"
               className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -58,8 +68,8 @@ function Login() {
               {error}
             </div>
           )}
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition duration-200 disabled:opacity-60"
             disabled={loading}
           >

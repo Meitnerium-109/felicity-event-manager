@@ -1,0 +1,2 @@
+Frontend URL: [VERCEL_URL_HERE]
+Backend API URL: [RENDER_URL_HERE]

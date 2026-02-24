@@ -23,6 +23,10 @@ const registrationSchema = new mongoose.Schema({
     ref: 'Event',
     required: true,
   },
+  ticketId: {
+    type: String,
+    // explicitly required for tracking
+  },
   participantId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

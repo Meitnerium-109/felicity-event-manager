@@ -1,10 +1,22 @@
 import express from 'express';
-import { createOrganizer } from '../controllers/adminController.js';
+import { createOrganizer, deleteOrganizer, toggleOrganizerStatus, getAllUsers, deleteUser } from '../controllers/adminController.js';
 import { protect, authorizeRoles } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 // route to create a new organizer (admin only)
 router.post('/organizers', protect, authorizeRoles(['Admin']), createOrganizer);
+
+// route to delete an organizer by ID and cascade delete events (admin only)
+router.delete('/organizers/:id', protect, authorizeRoles(['Admin']), deleteOrganizer);
+
+// route to toggle an organizer's status
+router.put('/organizers/:id/toggle-status', protect, authorizeRoles(['Admin']), toggleOrganizerStatus);
+
+// route to get all users
+router.get('/users', protect, authorizeRoles(['Admin']), getAllUsers);
+
+// route to delete a user by ID
+router.delete('/users/:id', protect, authorizeRoles(['Admin']), deleteUser);
 
 export default router;

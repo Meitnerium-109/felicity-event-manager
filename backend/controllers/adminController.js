@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import { User } from '../models/User.js';
+import { Event } from '../models/Event.js';
 
 // helper function to generate random password
 const generateRandomPassword = () => {
@@ -21,7 +22,7 @@ const generateLoginEmail = (clubName) => {
 // create a new organizer account
 export const createOrganizer = async (req, res) => {
   try {
-    const { name, category, collegeName, contactNumber, description, contactEmail } = req.body;
+    const { name, category, collegeName, contactNumber, description } = req.body;
 
     // validating required fields
     if (!name || !category || !contactNumber) {
@@ -75,5 +76,91 @@ export const createOrganizer = async (req, res) => {
   } catch (error) {
     console.log('create organizer error:', error.message);
     res.status(500).json({ message: 'server error while creating organizer' });
+  }
+};
+
+// toggle organizer active status (Archive/Unarchive)
+export const toggleOrganizerStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const organizer = await User.findById(id);
+
+    if (!organizer || (organizer.role !== 'Organizer' && organizer.role !== 'organiser')) {
+      return res.status(404).json({ message: 'organizer not found' });
+    }
+
+    organizer.isActive = !organizer.isActive;
+    await organizer.save();
+
+    res.status(200).json({
+      message: `Organizer practically ${organizer.isActive ? 'unarchived (can login)' : 'archived (cannot login)'} successfully`,
+      isActive: organizer.isActive
+    });
+  } catch (error) {
+    console.log('toggle organizer status error:', error.message);
+    res.status(500).json({ message: 'server error while toggling organizer status' });
+  }
+};
+
+// delete an organizer and cascade delete their events
+export const deleteOrganizer = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const organizer = await User.findById(id);
+
+    if (!organizer || (organizer.role !== 'Organizer' && organizer.role !== 'organiser')) {
+      return res.status(404).json({ message: 'organizer not found' });
+    }
+
+    // cascading delete all related events permanently
+    await Event.deleteMany({ organiserId: id });
+    await Event.deleteMany({ organizerId: id }); // fallback if old spelling exists
+
+    await User.findByIdAndDelete(id);
+
+    res.status(200).json({ message: 'Organiser and all associated events deleted permanently.' });
+  } catch (error) {
+    console.log('delete organizer error:', error.message);
+    res.status(500).json({ message: 'server error while deleting organizer' });
+  }
+};
+
+// get all users excluding passwords
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find().select('-password');
+    res.status(200).json({
+      message: 'users fetched successfully',
+      users
+    });
+  } catch (error) {
+    console.log('get all users error:', error.message);
+    res.status(500).json({ message: 'server error while fetching users' });
+  }
+};
+
+// delete a user by ID
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ message: 'user not found' });
+    }
+
+    // prevent an admin from deleting themselves
+    if (user._id.toString() === req.user._id.toString()) {
+      return res.status(400).json({ message: 'you cannot delete your own admin account' });
+    }
+
+    await User.findByIdAndDelete(id);
+
+    res.status(200).json({ message: 'user deleted successfully' });
+  } catch (error) {
+    console.log('delete user error:', error.message);
+    res.status(500).json({ message: 'server error while deleting user' });
   }
 };

@@ -15,23 +15,25 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-role: {
+  role: {
     type: String,
     enum: [
-      'Participant', 'participant', 
-      'Organiser', 'organiser', 'Organizer', 'organizer', 
+      'Participant', 'participant',
+      'Organiser', 'organiser', 'Organizer', 'organizer',
       'Admin', 'admin'
-    ], 
+    ],
     required: true,
   },
 
   // Participant-only fields
+  firstName: String,
+  lastName: String,
   participantType: {
     type: String,
     enum: ['IIIT', 'Non-IIIT'],
   },
-  areasOfInterest: {
-    type: [String], 
+  interests: {
+    type: [String],
   },
   followedClubs: {
     type: [mongoose.Schema.Types.ObjectId],
@@ -39,9 +41,11 @@ role: {
   },
 
   // Organiser-only fields
+  organizerName: String,
+  contactEmail: String,
   category: {
     type: String,
-    enum: ['Technical', 'Cultural', 'Sports', 'Social', 'Academic'],
+    enum: ['Technical', 'Cultural', 'Sports', 'Other'],
   },
   collegeName: {
     type: String,
@@ -51,6 +55,13 @@ role: {
   },
   description: {
     type: String,
+  },
+  discordWebhookUrl: {
+    type: String,
+  },
+  isActive: {
+    type: Boolean,
+    default: true,
   },
 
   createdAt: {
